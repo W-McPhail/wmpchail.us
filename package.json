@@ -1,0 +1,24 @@
+{
+  "name": "wmcphail-us",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Portfolio, resume and blog for Willow McPhail — software engineer & quantitative trader",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n client,server -c cyan,magenta \"npm run dev -w client\" \"npm run dev -w server\"",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "npm run start -w server",
+    "typecheck": "npm run typecheck -w client && npm run typecheck -w server",
+    "db:generate": "npm run db:generate -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "drizzle-orm": "^0.45.2"
+  }
+}
