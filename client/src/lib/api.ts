@@ -23,6 +23,17 @@ export interface PostInput {
   published: boolean;
 }
 
+export interface ImageMeta {
+  id: string;
+  filename: string;
+  mime: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  url: string;
+  createdAt?: string;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -53,6 +64,24 @@ export const api = {
     me: () => request<{ authenticated: boolean }>("/api/auth/me"),
     login: (password: string) => request<{ ok: true }>("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
     logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+  },
+  images: {
+    list: () => request<ImageMeta[]>("/api/images"),
+    remove: (id: string) => request<{ ok: true }>(`/api/images/${id}`, { method: "DELETE" }),
+    upload: async (blob: Blob, name: string, width?: number, height?: number) => {
+      const q = new URLSearchParams({ name });
+      if (width) q.set("w", String(width));
+      if (height) q.set("h", String(height));
+      const res = await fetch(`/api/images?${q}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": blob.type || "application/octet-stream" },
+        body: blob,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, body?.error ?? `Upload failed (${res.status})`);
+      return body as ImageMeta;
+    },
   },
   contact: (input: { name: string; email: string; company?: string; message: string; website?: string }) =>
     request<{ ok: true }>("/api/contact", { method: "POST", body: JSON.stringify(input) }),

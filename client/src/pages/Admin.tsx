@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from "react";
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { Markdown } from "../components/Markdown";
-import { api, formatDate, type PostInput, type PostSummary } from "../lib/api";
+import { api, formatDate, type ImageMeta, type PostInput, type PostSummary } from "../lib/api";
+import { prepareImage } from "../lib/image";
 
 /* ---------- auth gate ---------- */
 
@@ -126,6 +127,11 @@ function PostList({ onLogout }: { onLogout: () => void }) {
 
 const empty: PostInput = { title: "", slug: "", excerpt: "", content: "", tags: [], published: false };
 
+const imageMarkdown = (img: { url: string; filename: string }) =>
+  `![${img.filename.replace(/\.[a-z0-9]+$/i, "").replace(/-/g, " ")}](${img.url})`;
+
+const fmtBytes = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+
 function Editor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -136,6 +142,12 @@ function Editor() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [library, setLibrary] = useState<ImageMeta[] | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!editing) return;
@@ -155,7 +167,74 @@ function Editor() {
       .catch((e) => setError(e.message));
   }, [editing, id]);
 
+  useEffect(() => {
+    if (showLibrary && library === null) api.images.list().then(setLibrary).catch((e) => setError(e.message));
+  }, [showLibrary, library]);
+
   const set = <K extends keyof PostInput>(k: K, v: PostInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  /** Insert text at the textarea cursor (or append), keeping focus. */
+  const insertAtCursor = useCallback((text: string) => {
+    const ta = textareaRef.current;
+    setForm((f) => {
+      if (!ta) return { ...f, content: `${f.content}\n\n${text}\n` };
+      const start = ta.selectionStart ?? f.content.length;
+      const end = ta.selectionEnd ?? start;
+      const before = f.content.slice(0, start);
+      const after = f.content.slice(end);
+      const pad = before.length && !before.endsWith("\n") ? "\n\n" : "";
+      const next = `${before}${pad}${text}\n${after}`;
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = before.length + pad.length + text.length + 1;
+        ta.setSelectionRange(pos, pos);
+      });
+      return { ...f, content: next };
+    });
+  }, []);
+
+  const uploadFiles = useCallback(
+    async (files: Iterable<File>) => {
+      const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+      if (list.length === 0) return;
+      setError(null);
+      for (const file of list) {
+        setUploading(file.name);
+        try {
+          const prepared = await prepareImage(file);
+          const meta = await api.images.upload(prepared.blob, prepared.name, prepared.width, prepared.height);
+          insertAtCursor(imageMarkdown(meta));
+          setLibrary((l) => (l ? [meta, ...l] : l));
+        } catch (e) {
+          setError(e instanceof Error ? `${file.name}: ${e.message}` : "Upload failed");
+        }
+      }
+      setUploading(null);
+    },
+    [insertAtCursor],
+  );
+
+  const onDrop = (e: DragEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    uploadFiles(e.dataTransfer.files);
+  };
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData.items)
+      .filter((i) => i.kind === "file" && i.type.startsWith("image/"))
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => !!f);
+    if (files.length) {
+      e.preventDefault();
+      uploadFiles(files);
+    }
+  };
+
+  async function removeImage(img: ImageMeta) {
+    if (!confirm(`Delete ${img.filename}? Posts referencing it will show a broken image.`)) return;
+    await api.images.remove(img.id);
+    setLibrary((l) => l?.filter((i) => i.id !== img.id) ?? l);
+  }
 
   async function save(publish?: boolean) {
     setBusy(true);
@@ -220,15 +299,66 @@ function Editor() {
             <textarea className="input" rows={2} value={form.excerpt} onChange={(e) => set("excerpt", e.target.value)} placeholder="One or two sentences shown in the list." />
           </div>
           <div>
-            <label className="label">Content <span className="normal-case tracking-normal text-ink-500">(Markdown · GFM · $\LaTeX$ math · fenced code)</span></label>
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <label className="label !mb-0">Content <span className="normal-case tracking-normal text-ink-500">(Markdown · GFM · $\LaTeX$ math · fenced code)</span></label>
+              <div className="flex items-center gap-2">
+                {uploading && <span className="font-mono text-[11px] text-accent-400">uploading {uploading}…</span>}
+                <button type="button" onClick={() => setShowLibrary((v) => !v)} className="btn-ghost !px-2.5 !py-1 text-xs">
+                  {showLibrary ? "Hide images" : "Images"}
+                </button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!!uploading} className="btn-ghost !px-2.5 !py-1 text-xs">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /></svg>
+                  Insert image
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+                  multiple
+                  hidden
+                  onChange={(e) => { if (e.target.files) uploadFiles(e.target.files); e.target.value = ""; }}
+                />
+              </div>
+            </div>
             <textarea
-              className="input min-h-[60vh] resize-y font-mono text-[13px] leading-relaxed"
+              ref={textareaRef}
+              className={`input min-h-[60vh] resize-y font-mono text-[13px] leading-relaxed transition ${dragging ? "!border-accent-400 ring-2 ring-accent-500/30" : ""}`}
               value={form.content}
               onChange={(e) => set("content", e.target.value)}
-              placeholder={"## Heading\n\nSome text with **bold** and `code`.\n\n$$\\text{Sharpe} = \\frac{E[R - R_f]}{\\sigma}$$\n\n```python\nprint('hello')\n```"}
+              onDrop={onDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onPaste={onPaste}
+              placeholder={"## Heading\n\nSome text with **bold** and `code`.\n\nDrop, paste, or insert an image — it becomes ![alt](/api/images/…)\n\n$$\\text{Sharpe} = \\frac{E[R - R_f]}{\\sigma}$$\n\n```python\nprint('hello')\n```"}
               spellCheck
             />
+            <p className="mt-1.5 text-[11px] text-ink-500">Drag & drop or paste images directly into the editor. Large images are resized to 1800px and stored as WebP.</p>
           </div>
+
+          {showLibrary && (
+            <div className="card p-4">
+              <p className="label">Uploaded images</p>
+              {library === null && <p className="text-sm text-ink-500">Loading…</p>}
+              {library?.length === 0 && <p className="text-sm text-ink-400">No images yet.</p>}
+              {library && library.length > 0 && (
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {library.map((img) => (
+                    <li key={img.id} className="flex items-center gap-3 rounded-lg border border-ink-700 bg-ink-900/60 p-2">
+                      <img src={img.url} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" loading="lazy" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-xs text-ink-100">{img.filename}</p>
+                        <p className="text-[11px] text-ink-500">{fmtBytes(img.size)}{img.width ? ` · ${img.width}×${img.height}` : ""}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button type="button" onClick={() => insertAtCursor(imageMarkdown(img))} className="btn-ghost !px-2 !py-1 text-xs">Insert</button>
+                        <button type="button" onClick={() => removeImage(img)} className="btn-ghost !px-2 !py-1 text-xs text-danger-400 hover:border-danger-400/50" aria-label="Delete image">✕</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
 
         <div className={`${preview ? "" : "hidden lg:block"}`}>

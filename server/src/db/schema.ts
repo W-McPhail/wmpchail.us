@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, timestamp, varchar, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, timestamp, varchar, index, integer, customType } from "drizzle-orm/pg-core";
 
 export const posts = pgTable(
   "posts",
@@ -32,3 +32,19 @@ export const inquiries = pgTable("inquiries", {
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
 export type Inquiry = typeof inquiries.$inferSelect;
+
+// Uploaded blog images, stored in Postgres so no external object store is needed.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+export const images = pgTable("images", {
+  id: varchar("id", { length: 24 }).primaryKey(),
+  filename: text("filename").notNull(),
+  mime: varchar("mime", { length: 64 }).notNull(),
+  size: integer("size").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  data: bytea("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Image = typeof images.$inferSelect;

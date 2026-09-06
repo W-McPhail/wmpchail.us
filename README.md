@@ -16,6 +16,7 @@ render.yaml  Render blueprint (web service + Postgres)
 - **Contact me** — modal form (nav, hero, and footer CTA). Submissions are stored in Postgres and forwarded by **email (Resend)** and **SMS (Twilio)**. Rate-limited, honeypot-protected.
 - **Blog / writing** — Markdown with GitHub-flavored tables, LaTeX math (`$...$`, `$$...$$`), and syntax-highlighted code. Drafts vs. published.
 - **Admin** at `/admin` — password login, post list, split-pane editor with live preview.
+- **Images in posts** — click *Insert image*, or drag-and-drop / paste an image into the editor. Images are downscaled in the browser (max 1800px, WebP) and stored in Postgres, then referenced as `![alt](/api/images/<id>/<name>)`. The *Images* panel in the editor lists and deletes uploads. External image URLs work too.
 
 ## Local development
 
@@ -58,4 +59,6 @@ If either integration isn't configured, the inquiry is still saved to the `inqui
 | GET | `/api/posts` | — | Published posts (`?all=1` includes drafts when signed in) |
 | GET | `/api/posts/:slug` | — | One post (drafts only when signed in) |
 | POST/PUT/DELETE | `/api/posts[/:id]` | admin | Create / update / delete |
+| GET | `/api/images/:id/:name` | — | Serve an uploaded image (immutable cache) |
+| GET / POST / DELETE | `/api/images[/:id]` | admin | List / upload (raw `image/*` body, ≤8 MB) / delete |
 | POST | `/api/auth/login` · `/logout` · GET `/me` | — | Admin session |

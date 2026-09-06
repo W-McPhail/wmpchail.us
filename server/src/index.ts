@@ -7,6 +7,7 @@ import { runMigrations } from "./db/index.js";
 import { authRouter } from "./routes/auth.js";
 import { contactRouter } from "./routes/contact.js";
 import { postsRouter } from "./routes/posts.js";
+import { imagesRouter } from "./routes/images.js";
 
 const app = express();
 app.set("trust proxy", 1); // Render sits behind a proxy; needed for correct req.ip + rate limiting
@@ -25,6 +26,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/posts", postsRouter);
+app.use("/api/images", imagesRouter);
 
 // Production: serve the built client and fall back to index.html for client-side routes.
 if (env.isProd) {
