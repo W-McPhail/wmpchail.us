@@ -41,7 +41,7 @@ npm run db:generate
 3. Set the secrets marked `sync: false` in the dashboard: `ADMIN_PASSWORD`, `RESEND_API_KEY`, and optionally the three `TWILIO_*` values.
 4. Point your domain (`wmcphail.us`) at the service under **Settings → Custom Domains**.
 
-The build runs `npm ci && npm run build` (client + server), and `npm start` serves the built client and the API from one process. Migrations run on boot.
+The build runs `npm ci --include=dev && npm run build` (dev deps are needed because Render sets `NODE_ENV=production`, which makes plain `npm ci` skip Vite and TypeScript) (client + server), and `npm start` serves the built client and the API from one process. Migrations run on boot.
 
 ### Notifications
 

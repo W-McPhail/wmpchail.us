@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free            # bump to "starter" to avoid cold starts once you're job-hunting in earnest
     region: ohio
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build   # --include=dev: Render sets NODE_ENV=production, which would skip vite/tsc
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
